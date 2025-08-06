@@ -29,15 +29,17 @@
 				target="_blank">this link</a> and download its contents. It should download as a .json file.</p>
 		<p>Upload that file here, select what extras you want, and hit generate. It'll generate you an iCal file you can
 			import into your calendar software of choice.</p>
-		<p>Sometimes you'll get an error (Likely a 401) when trying to fetch your timetable. A known fix is clearing the cookies on Compass and trying again. If you can view your timetable in Compass then the timetable API link should work too.</p>
+		<p>Sometimes you'll get an error (Likely a 401) when trying to fetch your timetable. A known fix is clearing the
+			cookies on Compass and trying again. If you can view your timetable in Compass then the timetable API link
+			should work too.</p>
 	</div>
 	<div>
 		<h2>Generator</h2>
 		<form id="formio" style="text-align: left;">
-			<!-- <label for="addWeeks">Add semester weeks?</label><input type="checkbox" id="addWeeks" name="addWeeks"><br> -->
-			<label for="separateTopics">Generate a separate calendar for each topic? (Useful for colouring in Google
+			<label for="addWeeks">Add semester weeks?</label><input type="checkbox" id="addWeeks" name="addWeeks"><br>
+			<label for="separateTopics">Generate all as separate calendars? (Useful for colouring in Google
 				Calendar)</label><input type="checkbox" id="separateTopics" name="separateTopics"><br>
-			<label for="input">Upload your timetable: </label>
+			<label for="input">Upload your timetable json file: </label>
 			<input type="file" id="input" placeholder="timetable.json"><br>
 			<label for="generateButton">Punch it and let the magic rip: </label>
 			<button accept=".json" id="generateButton">Generate</button>
@@ -53,7 +55,9 @@
 		<p>You can see for yourself by opening Developer Tools, going to the network section, and monitoring incoming
 			and outgoing traffic. Other than loading this page itself, no other calls should be made.</p>
 		<p>If you're still unconvinced, run it offline :D</p>
-		<p>Additionally, I have no plans to maintain this forever, but the code is all on this one page (And on my <a href="https://github.com/Terpity/FlindersTimetableParser">GitHub repo</a>) so go wild if you feel like it.</p>
+		<p>Additionally, I have no plans to maintain this forever, but the code is all on this one page (And on my <a
+				href="https://github.com/Terpity/FlindersTimetableParser">GitHub repo</a>) so go wild if you feel like
+			it.</p>
 	</div>
 	<script>
 
@@ -315,7 +319,6 @@
 					}
 
 					var calendar = calendarStart + SEPARATOR + calendarEvents.join(SEPARATOR) + calendarEnd;
-
 					return calendar;
 				}
 			};
@@ -332,6 +335,8 @@
 
 		document.getElementById("formio").addEventListener("submit", function (event) {
 			event.preventDefault();
+			generatedCalendars = [];
+			document.getElementById('resultsDiv').innerHTML = "" // This is definitely efficient (:
 			const selectedFile = document.getElementById("input").files[0];
 			if (selectedFile) {
 				let reader = new FileReader();
@@ -391,6 +396,23 @@
 				generatedCalendars.push(result)
 
 			}
+
+			if (document.getElementById("addWeeks").checked) {
+				let sem2 = {
+					weeksBeforeBreak: 8,
+					weeksAfterBreak: 4,
+					year: 2025,
+					week1Starts: "July 28, 2025",
+					week1Ends: "August 1, 2025"
+				}
+				let weeksCal = new ics()
+				weeksCal = addSemWeeks(weeksCal, sem2)
+				let result = {
+					code: "weeks",
+					cal: weeksCal
+				}
+				generatedCalendars.push(result)
+			};
 			publishResults(generatedCalendars)
 			// for (const lesson in classes) {
 			// 	let eventName
@@ -407,21 +429,85 @@
 			// }
 		}
 
+		function addDays(date, days) {
+			result = new Date(date)
+			result.setDate(result.getDate() + days);
+			return result;
+		}
+
+		function addSemWeeks(cal, semDetails) {
+			// Week 1
+			let weekStart = new Date(semDetails.week1Starts)
+			let weekEnd = new Date(semDetails.week1Ends)
+
+			// Mid-semester break
+			let msb1Start = addDays(weekStart, 7 * (semDetails.weeksBeforeBreak))
+			let msb2End = addDays(msb1Start, 12)
+
+			// SWOTVAC
+			let swotvacStart = addDays(weekStart, (7* (semDetails.weeksBeforeBreak+2+semDetails.weeksAfterBreak)))
+			let swotvacEnd = addDays(swotvacStart, 5)
+			
+			// Exam season
+			let exam1Start = addDays(swotvacEnd, 2)
+			let exam1End = addDays(exam1Start, 5)
+			let exam2Start = addDays(exam1End, 2)
+			let exam2End = addDays(exam2Start, 5)
+
+			for (let week = 1; week <= semDetails.weeksBeforeBreak; week++) {
+				startDate = addDays(weekStart, 7 * (week-1))
+				// console.log(startDate)
+				endDate = addDays(weekEnd, 7 * (week-1) + 1)
+				cal.addEvent(`Uni Week ${week}`, `${semDetails.year} Semester Weeks`, "", start = startDate, end = endDate)
+				// console.log(`Added week ${week} from ${startDate.toDateString()} to ${endDate.toDateString()}`)
+			}
+
+			cal.addEvent(`Uni Mid-semester Break`, "2025 Semester Weeks", "", start = msb1Start, end = msb2End)
+			// console.log(`MSB1: ${msb1Start.toDateString()} - ${msb1End.toDateString()}`)
+			// console.log(`MSB2: ${msb2Start.toDateString()} - ${msb2End.toDateString()}`)
+
+
+			for (let week = semDetails.weeksBeforeBreak + 1; week <= (semDetails.weeksBeforeBreak + semDetails.weeksAfterBreak); week++) {
+				startDate = addDays(weekStart, 7 * (week+1))
+				endDate = addDays(weekEnd, 7 * (week+1) + 1)
+				cal.addEvent(`Uni Week ${week}`, `${semDetails.year} Semester Weeks`, "", start=startDate, end = endDate)
+				// console.log(`Added week ${week} from ${startDate.toDateString()} to ${endDate.toDateString()}`)
+			}
+			// console.log(`Swotvac: ${swotvacStart.toDateString()} - ${swotvacEnd.toDateString()}`)
+			// console.log(`Exams w1: ${exam1Start.toDateString()} - ${exam1End.toDateString()}`)
+			// console.log(`Exams w2: ${exam2Start.toDateString()} - ${exam2End.toDateString()}`)
+			cal.addEvent("Uni Week 13 (SWOTVAC)", `${semDetails.year} Semester Weeks`, "", start = swotvacStart, end=swotvacEnd)
+			cal.addEvent(`Uni End of Year Exams`, "2025 Semester Weeks", "", start = exam1Start, end=exam1End)
+			cal.addEvent(`Uni End of Year Exams`, "2025 Semester Weeks", "", start = exam2Start, end=exam2End)
+
+			return cal
+		}
+
 		function generateCal(classes) {
 			let cal = new ics()
 			for (const lesson in classes) {
 				cal.addEvent(`${classes[lesson].extendedProps.topicCode} ${classes[lesson].extendedProps.activityName}`, `${classes[lesson].extendedProps.topicTitle} ${classes[lesson].extendedProps.activityName} at ${classes[lesson].extendedProps.locationText} ${classes[lesson].extendedProps.roomText}`, classes[lesson].extendedProps.locationCode + " " + classes[lesson].extendedProps.buildingCode + " " + classes[lesson].extendedProps.roomText, classes[lesson].start, classes[lesson].end)
 			}
-			cal.download();
-			if (document.getElementById("addWeeks").checked) {
 
-			}
+			if (document.getElementById("addWeeks").checked) {
+				let sem2 = {
+					weeksBeforeBreak: 8,
+					weeksAfterBreak: 4,
+					year: 2025,
+					week1Starts: "July 28, 2025",
+					week1Ends: "August 1, 2025"
+				}
+				addSemWeeks(cal, sem2)
+			};
+			cal.download();
+
 		}
 
 		function publishResults(results) {
 			let today = new Date()
 			for (const result in results) {
 				elResult = document.createElement("a")
+				elResult.classList.add("downloadLink")
 				elResult.innerHTML = `Calendar for ${results[result].code}`
 				elResult.id = `${generatedCalendars[result].code}-download`
 				elResult.download = true
@@ -429,11 +515,15 @@
 				document.getElementById('resultsDiv').appendChild(elResult)
 				document.getElementById('resultsDiv').innerHTML += "<br>"
 			}
-			
+
 			for (const result in results) {
 				document.getElementById(`${results[result].code}-download`).addEventListener("click", (e) => {
 					e.preventDefault()
-					generatedCalendars[result].cal.download(`${today.getFullYear()}-${today.getMonth()}-${today.getDate()} - ${results[result].code} Timetable`)
+					try {
+						generatedCalendars[result].cal.download(`${today.getFullYear()}-${today.getMonth()}-${today.getDate()} - ${results[result].code} Timetable`)
+					} catch (err) {
+						console.error(`Failed to download calendar: ${results[result].code}`)
+					}
 				})
 			}
 		}
