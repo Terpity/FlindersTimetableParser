@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Via the student system...</title>
+</head>
+<body>
+    <main style="padding: 4em;">
+        <h1>There is another way. Sort of.</h1>
+        <h2>Preface</h2>
+        <p>
+            So, the original method utilised the fact that Compass utilised a very simple API call that just returned all your classes if you were signed in.
+            <br>
+            The new student system does something similar when viewing your calendar, but it only ever fetches the week that you're looking at.
+            <br>
+            This makes it tricky to extract an entire semester's worth of classes, but... it isn't impossible.
+            <br>
+            By editing and resending the GET request that your browser makes, you can change the specified start and end ranges that the API call returns. 
+            <br>
+            2026-01-01 and 2026-12-31 sound like great start and end values.
+        </p>
+        <p>Note, the instructions below are for Firefox. I may add for Chromium later, but it should be fairly similar.</p>
+        <h2>How to</h2>
+        <p>
+            First, navigate to My Calendar in the Student System.<br>
+            Then, open developer tools and open its Network tab. Make sure to hit the stopwatch if you don't see any results, then it will start logging. <br>
+            Wait until a POST call goes out for a file named "ReadCalendarData". This is the one we will be editing. <br>
+            Right-click the request and select "Edit and Resend". At the bottom of the editor tab will be the "body" of the request.<br>
+            Right at the very end of this request are two little strings named "RangeStart" and "RangeEnd". Change their values to "2026-01-01 00:00:00" and "2026-12-31 23:59:59" respectively.<br>
+            Hit send, and wait for the response to come back. If it worked, that edited call should return a 200 status (success) and a number of items.<br>
+            Right-click the entry for your edited request and its response, and select Save Response As. This is the file that has all the data about your classes! Well, most. Keep reading.
+        </p>
+        <h2>Understanding the beast</h2>
+        <p>
+            Because the new student system is <i>*fancy*</i>, it returns a <i>lot</i> of info that we neither need nor care about.
+            <br>
+            The very few elements we care about are housed in each entry's "InternalEventFields", and "AllFields" values.
+            <br>
+            "IntervalEventFields" contains the start and end times of the events, and whether it is an all-day event.
+            <br>
+            "AllFields" contains the description of the event in question.
+            <br><br>
+            Now this is all well and good, but you may notice every entry is missing a fairly crucial piece of info. The location.
+            <br>
+            Like every good program, to get the location for your class, you have to individually click every single element on the calendar, <i>which individually returns brand new html with the location inside.</i>
+            <br>
+            Never change Flinders, never change.
+        </p>
+        <h2>Class enrollments to the rescue?</h2>
+        <p>
+            Not quite. While you can extract the JSON from the class enrolments page to get a lot more data about each of your classes (including the location), from the initial view it provides no data about what days classes actually run.<br>
+            You can see the frequency of classes, but not whether they start later in week two or three or eight. It might say "five occurances", but it won't specify whether they are weekly or spread out randomly. It's unhelpful.<br>
+            This information <i>is</i> accessable by, you guessed it, clicking on every single one individually.<br>
+            Best idea at this stage is to cross-reference it with the response from the My Calendar page, but that's a lot of effort for the programmer (<i>*cough*</i>) and for the user (the bigger issue). <br>
+            Maybe one day this could be accomplished, or maybe one day we'll have to, but for now I just hope Compass keeps working (:
+        </p>
+        <div>
+            <!--
+		<h2>Generator</h2>
+        <form id="formio" style="text-align: left;">
+			<label style="text-align: center;"><u>Additions (All optional)</u></label><br>
+			<label for="addWeeks">Add 2026 Sem 1 semester weeks?</label><input type="checkbox" id="addWeeks" name="addWeeks"><br>
+			<label for="addImportantDates" title="Last day to withdraw, census dates, etc">Add 2026 key dates?</label><input type="checkbox" id="addImportantDates" name="addImportantDates"><br>
+			<label for="input">Upload your timetable json file: </label><input type="file" id="input" placeholder="timetable.json"><br>
+			<br>
+			<label style="text-align: center;"><u>Export</u></label><br>
+			<label for="separateTopics">Generate all as separate calendars? (Useful for colouring in Google Calendar)</label><input type="checkbox" id="separateTopics" name="separateTopics"><br>
+			<label for="generateButton">Punch it and let the magic rip: </label>
+			<button accept=".json" id="generateButton">Generate</button>
+		</form>
+	</div>
+	<div id="resultsDiv">
+
+	</div>
+    -->
+    </main>
+    <script>
+
+		// https://github.com/nwcell/ics.js
+
+		/*
+		MIT License
+		
+		Copyright (c) 2018 Travis Krause 
+		
+		Permission is hereby granted, free of charge, to any person obtaining a copy
+		of this software and associated documentation files (the "Software"), to deal
+		in the Software without restriction, including without limitation the rights
+		to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+		copies of the Software, and to permit persons to whom the Software is
+		furnished to do so, subject to the following conditions:
+		
+		The above copyright notice and this permission notice shall be included in all
+		copies or substantial portions of the Software.
+		
+		THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+		IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+		FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+		AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+		LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+		OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+		SOFTWARE.
+		*/
+
+		var ics = function (uidDomain, prodId) {
+			'use strict';
+
+			if (navigator.userAgent.indexOf('MSIE') > -1 && navigator.userAgent.indexOf('MSIE 10') == -1) {
+				console.log('Unsupported Browser');
+				return;
+			}
+
+			if (typeof uidDomain === 'undefined') { uidDomain = 'default'; }
+			if (typeof prodId === 'undefined') { prodId = 'Calendar'; }
+
+			var SEPARATOR = (navigator.appVersion.indexOf('Win') !== -1) ? '\r\n' : '\n';
+			var calendarEvents = [];
+			var calendarStart = [
+				'BEGIN:VCALENDAR',
+				'PRODID:' + prodId,
+				'VERSION:2.0'
+			].join(SEPARATOR);
+			var calendarEnd = SEPARATOR + 'END:VCALENDAR';
+			var BYDAY_VALUES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+
+			return {
+				/**
+				 * Returns events array
+				 * @return {array} Events
+				 */
+				'events': function () {
+					return calendarEvents;
+				},
+
+				/**
+				 * Returns calendar
+				 * @return {string} Calendar in iCalendar format
+				 */
+				'calendar': function () {
+					return calendarStart + SEPARATOR + calendarEvents.join(SEPARATOR) + calendarEnd;
+				},
+
+				/**
+				 * Add event to the calendar
+				 * @param  {string} subject     Subject/Title of event
+				 * @param  {string} description Description of event
+				 * @param  {string} location    Location of event
+				 * @param  {string} begin       Beginning date of event
+				 * @param  {string} stop        Ending date of event
+				 */
+				'addEvent': function (subject, description, location, begin, stop, rrule) {
+					// I'm not in the mood to make these optional... So they are all required
+					if (typeof subject === 'undefined' ||
+						typeof description === 'undefined' ||
+						typeof location === 'undefined' ||
+						typeof begin === 'undefined' ||
+						typeof stop === 'undefined'
+					) {
+						return false;
+					}
+
+					// validate rrule
+					if (rrule) {
+						if (!rrule.rrule) {
+							if (rrule.freq !== 'YEARLY' && rrule.freq !== 'MONTHLY' && rrule.freq !== 'WEEKLY' && rrule.freq !== 'DAILY') {
+								throw "Recurrence rrule frequency must be provided and be one of the following: 'YEARLY', 'MONTHLY', 'WEEKLY', or 'DAILY'";
+							}
+
+							if (rrule.until) {
+								if (isNaN(Date.parse(rrule.until))) {
+									throw "Recurrence rrule 'until' must be a valid date string";
+								}
+							}
+
+							if (rrule.interval) {
+								if (isNaN(parseInt(rrule.interval))) {
+									throw "Recurrence rrule 'interval' must be an integer";
+								}
+							}
+
+							if (rrule.count) {
+								if (isNaN(parseInt(rrule.count))) {
+									throw "Recurrence rrule 'count' must be an integer";
+								}
+							}
+
+							if (typeof rrule.byday !== 'undefined') {
+								if ((Object.prototype.toString.call(rrule.byday) !== '[object Array]')) {
+									throw "Recurrence rrule 'byday' must be an array";
+								}
+
+								if (rrule.byday.length > 7) {
+									throw "Recurrence rrule 'byday' array must not be longer than the 7 days in a week";
+								}
+
+								// Filter any possible repeats
+								rrule.byday = rrule.byday.filter(function (elem, pos) {
+									return rrule.byday.indexOf(elem) == pos;
+								});
+
+								for (var d in rrule.byday) {
+									if (BYDAY_VALUES.indexOf(rrule.byday[d]) < 0) {
+										throw "Recurrence rrule 'byday' values must include only the following: 'SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'";
+									}
+								}
+							}
+						}
+					}
+
+					//TODO add time and time zone? use moment to format?
+					var start_date = new Date(begin);
+					var end_date = new Date(stop);
+					var now_date = new Date();
+
+					var start_year = ("0000" + (start_date.getFullYear().toString())).slice(-4);
+					var start_month = ("00" + ((start_date.getMonth() + 1).toString())).slice(-2);
+					var start_day = ("00" + ((start_date.getDate()).toString())).slice(-2);
+					var start_hours = ("00" + (start_date.getHours().toString())).slice(-2);
+					var start_minutes = ("00" + (start_date.getMinutes().toString())).slice(-2);
+					var start_seconds = ("00" + (start_date.getSeconds().toString())).slice(-2);
+
+					var end_year = ("0000" + (end_date.getFullYear().toString())).slice(-4);
+					var end_month = ("00" + ((end_date.getMonth() + 1).toString())).slice(-2);
+					var end_day = ("00" + ((end_date.getDate()).toString())).slice(-2);
+					var end_hours = ("00" + (end_date.getHours().toString())).slice(-2);
+					var end_minutes = ("00" + (end_date.getMinutes().toString())).slice(-2);
+					var end_seconds = ("00" + (end_date.getSeconds().toString())).slice(-2);
+
+					var now_year = ("0000" + (now_date.getFullYear().toString())).slice(-4);
+					var now_month = ("00" + ((now_date.getMonth() + 1).toString())).slice(-2);
+					var now_day = ("00" + ((now_date.getDate()).toString())).slice(-2);
+					var now_hours = ("00" + (now_date.getHours().toString())).slice(-2);
+					var now_minutes = ("00" + (now_date.getMinutes().toString())).slice(-2);
+					var now_seconds = ("00" + (now_date.getSeconds().toString())).slice(-2);
+
+					// Since some calendars don't add 0 second events, we need to remove time if there is none...
+					var start_time = '';
+					var end_time = '';
+					if (start_hours + start_minutes + start_seconds + end_hours + end_minutes + end_seconds != 0) {
+						start_time = 'T' + start_hours + start_minutes + start_seconds;
+						end_time = 'T' + end_hours + end_minutes + end_seconds;
+					}
+					var now_time = 'T' + now_hours + now_minutes + now_seconds;
+
+					var start = start_year + start_month + start_day + start_time;
+					var end = end_year + end_month + end_day + end_time;
+					var now = now_year + now_month + now_day + now_time;
+
+					// recurrence rrule vars
+					var rruleString;
+					if (rrule) {
+						if (rrule.rrule) {
+							rruleString = rrule.rrule;
+						} else {
+							rruleString = 'rrule:FREQ=' + rrule.freq;
+
+							if (rrule.until) {
+								var uDate = new Date(Date.parse(rrule.until)).toISOString();
+								rruleString += ';UNTIL=' + uDate.substring(0, uDate.length - 13).replace(/[-]/g, '') + '000000Z';
+							}
+
+							if (rrule.interval) {
+								rruleString += ';INTERVAL=' + rrule.interval;
+							}
+
+							if (rrule.count) {
+								rruleString += ';COUNT=' + rrule.count;
+							}
+
+							if (rrule.byday && rrule.byday.length > 0) {
+								rruleString += ';BYDAY=' + rrule.byday.join(',');
+							}
+						}
+					}
+
+					var stamp = new Date().toISOString();
+
+					var calendarEvent = [
+						'BEGIN:VEVENT',
+						'UID:' + calendarEvents.length + "@" + uidDomain,
+						'CLASS:PUBLIC',
+						'DESCRIPTION:' + description,
+						'DTSTAMP;VALUE=DATE-TIME:' + now,
+						'DTSTART;VALUE=DATE-TIME:' + start,
+						'DTEND;VALUE=DATE-TIME:' + end,
+						'LOCATION:' + location,
+						'SUMMARY;LANGUAGE=en-us:' + subject,
+						'TRANSP:TRANSPARENT',
+						'END:VEVENT'
+					];
+
+					if (rruleString) {
+						calendarEvent.splice(4, 0, rruleString);
+					}
+
+					calendarEvent = calendarEvent.join(SEPARATOR);
+
+					calendarEvents.push(calendarEvent);
+					return calendarEvent;
+				},
+
+				/**
+				 * Download calendar using the saveAs function from filesave.js
+				 * @param  {string} filename Filename
+				 * @param  {string} ext      Extention
+				 */
+				'download': function (filename, ext) {
+					if (calendarEvents.length < 1) {
+						return false;
+					}
+
+					ext = (typeof ext !== 'undefined') ? ext : '.ics';
+					filename = (typeof filename !== 'undefined') ? filename : 'calendar';
+					var calendar = calendarStart + SEPARATOR + calendarEvents.join(SEPARATOR) + calendarEnd;
+
+					var blob;
+					if (navigator.userAgent.indexOf('MSIE 10') === -1) { // chrome or firefox
+						blob = new Blob([calendar]);
+					} else { // ie
+						var bb = new BlobBuilder();
+						bb.append(calendar);
+						blob = bb.getBlob('text/x-vCalendar;charset=' + document.characterSet);
+					}
+					saveAs(blob, filename + ext);
+					return calendar;
+				},
+
+				/**
+				 * Build and return the ical contents
+				 */
+				'build': function () {
+					if (calendarEvents.length < 1) {
+						return false;
+					}
+
+					var calendar = calendarStart + SEPARATOR + calendarEvents.join(SEPARATOR) + calendarEnd;
+					return calendar;
+				}
+			};
+		};
+
+		// Dependencies
+
+		/*! ics.js Wed Aug 20 2014 17:23:02 */
+		var saveAs = saveAs || function (e) { "use strict"; if (typeof e === "undefined" || typeof navigator !== "undefined" && /MSIE [1-9]\./.test(navigator.userAgent)) { return } var t = e.document, n = function () { return e.URL || e.webkitURL || e }, r = t.createElementNS("http://www.w3.org/1999/xhtml", "a"), o = "download" in r, a = function (e) { var t = new MouseEvent("click"); e.dispatchEvent(t) }, i = /constructor/i.test(e.HTMLElement) || e.safari, f = /CriOS\/[\d]+/.test(navigator.userAgent), u = function (t) { (e.setImmediate || e.setTimeout)(function () { throw t }, 0) }, s = "application/octet-stream", d = 1e3 * 40, c = function (e) { var t = function () { if (typeof e === "string") { n().revokeObjectURL(e) } else { e.remove() } }; setTimeout(t, d) }, l = function (e, t, n) { t = [].concat(t); var r = t.length; while (r--) { var o = e["on" + t[r]]; if (typeof o === "function") { try { o.call(e, n || e) } catch (a) { u(a) } } } }, p = function (e) { if (/^\s*(?:text\/\S*|application\/xml|\S*\/\S*\+xml)\s*;.*charset\s*=\s*utf-8/i.test(e.type)) { return new Blob([String.fromCharCode(65279), e], { type: e.type }) } return e }, v = function (t, u, d) { if (!d) { t = p(t) } var v = this, w = t.type, m = w === s, y, h = function () { l(v, "writestart progress write writeend".split(" ")) }, S = function () { if ((f || m && i) && e.FileReader) { var r = new FileReader; r.onloadend = function () { var t = f ? r.result : r.result.replace(/^data:[^;]*;/, "data:attachment/file;"); var n = e.open(t, "_blank"); if (!n) e.location.href = t; t = undefined; v.readyState = v.DONE; h() }; r.readAsDataURL(t); v.readyState = v.INIT; return } if (!y) { y = n().createObjectURL(t) } if (m) { e.location.href = y } else { var o = e.open(y, "_blank"); if (!o) { e.location.href = y } } v.readyState = v.DONE; h(); c(y) }; v.readyState = v.INIT; if (o) { y = n().createObjectURL(t); setTimeout(function () { r.href = y; r.download = u; a(r); h(); c(y); v.readyState = v.DONE }); return } S() }, w = v.prototype, m = function (e, t, n) { return new v(e, t || e.name || "download", n) }; if (typeof navigator !== "undefined" && navigator.msSaveOrOpenBlob) { return function (e, t, n) { t = t || e.name || "download"; if (!n) { e = p(e) } return navigator.msSaveOrOpenBlob(e, t) } } w.abort = function () { }; w.readyState = w.INIT = 0; w.WRITING = 1; w.DONE = 2; w.error = w.onwritestart = w.onprogress = w.onwrite = w.onabort = w.onerror = w.onwriteend = null; return m }(typeof self !== "undefined" && self || typeof window !== "undefined" && window || this.content); if (typeof module !== "undefined" && module.exports) { module.exports.saveAs = saveAs } else if (typeof define !== "undefined" && define !== null && define.amd !== null) { define("FileSaver.js", function () { return saveAs }) }
+
+		var ics = function (e, t) { "use strict"; { if (!(navigator.userAgent.indexOf("MSIE") > -1 && -1 == navigator.userAgent.indexOf("MSIE 10"))) { void 0 === e && (e = "default"), void 0 === t && (t = "Calendar"); var r = -1 !== navigator.appVersion.indexOf("Win") ? "\r\n" : "\n", n = [], i = ["BEGIN:VCALENDAR", "PRODID:" + t, "VERSION:2.0"].join(r), o = r + "END:VCALENDAR", a = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]; return { events: function () { return n }, calendar: function () { return i + r + n.join(r) + o }, addEvent: function (t, i, o, l, u, s) { if (void 0 === t || void 0 === i || void 0 === o || void 0 === l || void 0 === u) return !1; if (s && !s.rrule) { if ("YEARLY" !== s.freq && "MONTHLY" !== s.freq && "WEEKLY" !== s.freq && "DAILY" !== s.freq) throw "Recurrence rrule frequency must be provided and be one of the following: 'YEARLY', 'MONTHLY', 'WEEKLY', or 'DAILY'"; if (s.until && isNaN(Date.parse(s.until))) throw "Recurrence rrule 'until' must be a valid date string"; if (s.interval && isNaN(parseInt(s.interval))) throw "Recurrence rrule 'interval' must be an integer"; if (s.count && isNaN(parseInt(s.count))) throw "Recurrence rrule 'count' must be an integer"; if (void 0 !== s.byday) { if ("[object Array]" !== Object.prototype.toString.call(s.byday)) throw "Recurrence rrule 'byday' must be an array"; if (s.byday.length > 7) throw "Recurrence rrule 'byday' array must not be longer than the 7 days in a week"; s.byday = s.byday.filter(function (e, t) { return s.byday.indexOf(e) == t }); for (var c in s.byday) if (a.indexOf(s.byday[c]) < 0) throw "Recurrence rrule 'byday' values must include only the following: 'SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'" } } var g = new Date(l), d = new Date(u), f = new Date, S = ("0000" + g.getFullYear().toString()).slice(-4), E = ("00" + (g.getMonth() + 1).toString()).slice(-2), v = ("00" + g.getDate().toString()).slice(-2), y = ("00" + g.getHours().toString()).slice(-2), A = ("00" + g.getMinutes().toString()).slice(-2), T = ("00" + g.getSeconds().toString()).slice(-2), b = ("0000" + d.getFullYear().toString()).slice(-4), D = ("00" + (d.getMonth() + 1).toString()).slice(-2), N = ("00" + d.getDate().toString()).slice(-2), h = ("00" + d.getHours().toString()).slice(-2), I = ("00" + d.getMinutes().toString()).slice(-2), R = ("00" + d.getMinutes().toString()).slice(-2), M = ("0000" + f.getFullYear().toString()).slice(-4), w = ("00" + (f.getMonth() + 1).toString()).slice(-2), L = ("00" + f.getDate().toString()).slice(-2), O = ("00" + f.getHours().toString()).slice(-2), p = ("00" + f.getMinutes().toString()).slice(-2), Y = ("00" + f.getMinutes().toString()).slice(-2), U = "", V = ""; y + A + T + h + I + R != 0 && (U = "T" + y + A + T, V = "T" + h + I + R); var B, C = S + E + v + U, j = b + D + N + V, m = M + w + L + ("T" + O + p + Y); if (s) if (s.rrule) B = s.rrule; else { if (B = "rrule:FREQ=" + s.freq, s.until) { var x = new Date(Date.parse(s.until)).toISOString(); B += ";UNTIL=" + x.substring(0, x.length - 13).replace(/[-]/g, "") + "000000Z" } s.interval && (B += ";INTERVAL=" + s.interval), s.count && (B += ";COUNT=" + s.count), s.byday && s.byday.length > 0 && (B += ";BYDAY=" + s.byday.join(",")) } (new Date).toISOString(); var H = ["BEGIN:VEVENT", "UID:" + n.length + "@" + e, "CLASS:PUBLIC", "DESCRIPTION:" + i, "DTSTAMP;VALUE=DATE-TIME:" + m, "DTSTART;VALUE=DATE-TIME:" + C, "DTEND;VALUE=DATE-TIME:" + j, "LOCATION:" + o, "SUMMARY;LANGUAGE=en-us:" + t, "TRANSP:TRANSPARENT", "END:VEVENT"]; return B && H.splice(4, 0, B), H = H.join(r), n.push(H), H }, download: function (e, t) { if (n.length < 1) return !1; t = void 0 !== t ? t : ".ics", e = void 0 !== e ? e : "calendar"; var a, l = i + r + n.join(r) + o; if (-1 === navigator.userAgent.indexOf("MSIE 10")) a = new Blob([l]); else { var u = new BlobBuilder; u.append(l), a = u.getBlob("text/x-vCalendar;charset=" + document.characterSet) } return saveAs(a, e + t), l }, build: function () { return !(n.length < 1) && i + r + n.join(r) + o } } } console.log("Unsupported Browser") } };
+
+		// The actual code I bodged together obscenely very quickly 
+
+		document.getElementById("formio").addEventListener("submit", function (event) {
+			event.preventDefault();
+			console.log("Generating calendar(s)")
+			generatedCalendars = [];
+			document.getElementById('resultsDiv').innerHTML = "" // This is definitely efficient (:
+			const selectedFile = document.getElementById("input").files[0];
+			let classes = undefined
+			if (selectedFile != undefined) {
+				let reader = new FileReader();
+				reader.readAsText(selectedFile, "UTF-8");
+				reader.onload = function (evt) {
+					// console.log(JSON.parse(evt.target.result).Items)
+                    classes = JSON.parse(evt.target.result).Items
+                    // console.log(classes)
+                    if (document.getElementById("separateTopics").checked) {
+                        generateSeparateCal(classes)
+                    } else {
+                        generateCal(classes) 
+                    }
+				}
+				reader.onerror = function (evt) {
+					console.log("error reading file");
+				}
+			} else {
+                if (document.getElementById("separateTopics").checked) {
+				generateSeparateCal(classes)
+			} else {
+				generateCal(classes) 
+			}
+            }
+			
+		})
+
+		function formatEvent(lesson) { // Potential future refactor to allow user to design calendar data to what fits them
+			const eventName = lesson.extendedProps.topicCode + " " + lesson.extendedProps.activityName
+			let eventDesc = lesson.extendedProps.topicTitle + " " + lesson.extendedProps.activityName + " at " + lesson.extendedProps.locationText + " " + lesson.extendedProps.roomText
+			let eventLocation = lesson.extendedProps.locationCode + " " + lesson.extendedProps.buildingCode + " " + lesson.extendedProps.roomText
+			let eventStart = lesson.start
+			let eventEnd = lesson.end
+			let result = {
+				eventName, eventDesc, eventLocation, eventStart, eventEnd
+			}
+			return result
+		}
+
+		let generatedCalendars = []
+
+		function generateSeparateCal(classes) { // Generates a separate calendar for each class. Written but never actually tested
+			const addingDates = document.getElementById("addImportantDates").checked
+			const addingWeeks = document.getElementById("addWeeks").checked
+			console.log("Generating separate calendars")
+            console.log(classes)
+			console.log(`Classes: ${classes ? "Yes" : "No"}, Weeks: ${addingWeeks}, Dates: ${addingDates}`)
+            if (classes) {
+                let presentTopics = []
+                classes.map(lesson => lesson.AllFields.forEach(element => {
+                    if (element.FieldName == "spkStudyPackageCode") {
+                        presentTopics.push(element.Value)
+                    }
+                }))
+                const uniqueTopics = new Set(presentTopics);
+				// console.log(uniqueTopics)
+
+
+                /**
+                 * Unfinished adaption for student system timetable, downloaded from class enrollment page.
+                 * It has no correlation for the weeks or dates of classes. Best idea I've got so far is cross-reference it with the results returned when you edit the GET call to the calendar on My Calendar page
+                 * but man, that's a lot of work
+                 * Let's just hope Compass never stops working
+                 */
+                for (const topic of uniqueTopics.values()) {
+                    let topicCal = ics()
+					for (lesson in classes) {
+                        let isFromCurrentTopic = false
+                        classes[lesson].AllFields.forEach(field => {
+                            if (field.Value == topic) isFromCurrentTopic = true;
+                        })
+						if (isFromCurrentTopic) {
+							// let formattedEvent = formatEvent(classes[lesson])
+                            // console.log("hey!")
+                            const sessionsRegex = new RegExp("^\S*")
+                            let topicData = {
+                                startTime: classes[lesson].InternalEventFields.StartDateTime.Value,
+                                endTime: classes[lesson].InternalEventFields.EndDateTime.Value,
+                                topicCode: topic,
+                                location: "",
+                                description: "",
+                                date: "",
+                                sessions: 0,
+                                frequency: ""
+                            }
+                            classes[lesson].AllFields.forEach(field => {
+                                if (field.FieldName == "SubHeading2") topicData.location = field.Value;
+                                if (field.FieldName == "Description1") topicData.description = field.Value;
+                                if (field.FieldName == "Description2") {
+                                    topicData.sessions = parseInt(field.Value.split(" ")[0])
+                                }
+                                if (field.FieldName == "SubHeading1") topicData.frequency = field.Value
+                            })
+                            console.log(topicData)
+							try {
+								topicCal.addEvent(
+									classes[lesson].extendedProps.topicCode + " " + classes[lesson].extendedProps.activityName,
+									classes[lesson].extendedProps.topicTitle + " " + classes[lesson].extendedProps.activityName + " at " + classes[lesson].extendedProps.locationText + " " + classes[lesson].extendedProps.roomText,
+									classes[lesson].extendedProps.locationCode + " " + classes[lesson].extendedProps.buildingCode + " " + classes[lesson].extendedProps.roomText,
+									classes[lesson].start,
+									classes[lesson].end
+								)
+							} catch {
+								console.error("Error adding event")
+							}
+						}
+					}
+					let result = {
+						code: uniqueTopics[topic],
+						cal: topicCal
+					}
+					generatedCalendars.push(result)
+	
+				}
+			}
+
+			if (addingWeeks) {
+				let sem1 = {
+					weeksBeforeBreak: 6,
+					weeksAfterBreak: 7,
+					year: 2026,
+					week1Starts: "March 2, 2026",
+					week1Ends: "March 6, 2026"
+				}
+				// let sem2 = {
+				// 	weeksBeforeBreak: 8,
+				// 	weeksAfterBreak: 5,
+				// 	year: 2025,
+				// 	week1Starts: "July 28, 2025",
+				// 	week1Ends: "August 1, 2025"
+				// }
+				let weeksCal = new ics()
+				weeksCal = addSemWeeks(weeksCal, sem1)
+				let result = {
+					code: "weeks",
+					cal: weeksCal
+				}
+				generatedCalendars.push(result)
+			};
+
+			if (addingDates) {
+				let importantDatesCal = new ics()
+				importantDatesCal = addImportantDates(importantDatesCal)
+				let result = {
+					code: "Sem1ImportantDates2026",
+					cal: importantDatesCal
+				}
+				generatedCalendars.push(result)
+			};
+			if (generatedCalendars.length > 0) {
+				publishResults(generatedCalendars)
+
+			}
+			// for (const lesson in classes) {
+			// 	let eventName
+			// 	let eventDesc
+			// 	let eventLocation
+			// 	let eventStart = classes[lesson].start
+			// 	let eventEnd = classes[lesson].start
+
+			// 	cal.addEvent(classes[lesson].extendedProps.topicCode + " " + classes[lesson].extendedProps.activityName, classes[lesson].extendedProps.topicTitle + " " + classes[lesson].extendedProps.activityName + " at " + classes[lesson].extendedProps.locationText + " " + classes[lesson].extendedProps.roomText, classes[lesson].extendedProps.locationCode + " " + classes[lesson].extendedProps.buildingCode + " " + classes[lesson].extendedProps.roomText, classes[lesson].start, classes[lesson].end)
+			// }
+			// cal.download();
+			// if (document.getElementById("addWeeks").checked) {
+
+			// }
+		}
+
+		function addDays(date, days) {
+			result = new Date(date)
+			result.setDate(result.getDate() + days);
+			return result;
+		}
+
+		function addSemWeeks(cal, semDetails) {
+			// Week 1
+			let weekStart = new Date(semDetails.week1Starts)
+			let weekEnd = new Date(semDetails.week1Ends)
+
+			// Mid-semester break
+			let msb1Start = addDays(weekStart, 7 * (semDetails.weeksBeforeBreak))
+			let msb2End = addDays(msb1Start, 12)
+
+			// SWOTVAC
+			let swotvacStart = addDays(weekStart, (7* (semDetails.weeksBeforeBreak+2+semDetails.weeksAfterBreak)))
+			let swotvacEnd = addDays(swotvacStart, 5)
+			
+			// Exam season
+			let exam1Start = addDays(swotvacEnd, 2)
+			let exam1End = addDays(exam1Start, 5)
+			let exam2Start = addDays(exam1End, 2)
+			let exam2End = addDays(exam2Start, 5)
+
+			for (let week = 1; week <= semDetails.weeksBeforeBreak; week++) {
+				startDate = addDays(weekStart, 7 * (week-1))
+				// console.log(startDate)
+				endDate = addDays(weekEnd, 7 * (week-1) + 1)
+				cal.addEvent(`Uni Week ${week}`, `${semDetails.year} Semester Weeks`, "", start = startDate, end = endDate)
+				// console.log(`Added week ${week} from ${startDate.toDateString()} to ${endDate.toDateString()}`)
+			}
+
+			cal.addEvent(`Uni Mid-semester Break`, `${semDetails.year} Semester Weeks`, "", start = msb1Start, end = msb2End)
+			// console.log(`MSB1: ${msb1Start.toDateString()} - ${msb1End.toDateString()}`)
+			// console.log(`MSB2: ${msb2Start.toDateString()} - ${msb2End.toDateString()}`)
+
+
+			for (let week = semDetails.weeksBeforeBreak + 1; week <= (semDetails.weeksBeforeBreak + semDetails.weeksAfterBreak); week++) {
+				startDate = addDays(weekStart, 7 * (week+1))
+				endDate = addDays(weekEnd, 7 * (week+1) + 1)
+				cal.addEvent(`Uni Week ${week}`, `${semDetails.year} Semester Weeks`, "", start=startDate, end = endDate)
+				// console.log(`Added week ${week} from ${startDate.toDateString()} to ${endDate.toDateString()}`)
+			}
+			// console.log(`Swotvac: ${swotvacStart.toDateString()} - ${swotvacEnd.toDateString()}`)
+			// console.log(`Exams w1: ${exam1Start.toDateString()} - ${exam1End.toDateString()}`)
+			// console.log(`Exams w2: ${exam2Start.toDateString()} - ${exam2End.toDateString()}`)
+			cal.addEvent(`Uni Week ${semDetails.weeksBeforeBreak + semDetails.weeksAfterBreak + 1} (SWOTVAC)`, `${semDetails.year} Semester Weeks`, "", start = swotvacStart, end=swotvacEnd)
+			cal.addEvent(`Uni Exams`, `${semDetails.year} Semester Weeks`, "", start = exam1Start, end=exam1End)
+			cal.addEvent(`Uni Exams`, `${semDetails.year} Semester Weeks`, "", start = exam2Start, end=exam2End)
+
+			return cal
+		}
+
+		function addImportantDates(cal) {
+			const dates = [
+				{
+					title: "O'Week Sem 1",
+					date: "February 23, 2026",
+					duration: 5
+				},
+				{
+					title: "Start of Sem 1",
+					date: "March 2, 2026",
+					duration: 1
+				},
+				{
+					title: "Last day to enrol and pay fees Sem 1",
+					date: "March 13, 2026",
+					duration: 1
+				},
+				{
+					title: "Sem 1 Census Date",
+					date: "April 3, 2026",
+					duration: 1
+				},
+				{
+					title: "Last day to withdraw without failure (WN)",
+					date: "May 15, 2026",
+					duration: 1
+				},
+				{
+					title: "Last day to withdraw (WF)",
+					date: "June 19, 2026",
+					duration: 1
+				},
+				{
+					title: "Higher Degree by Research Census",
+					date: "June 29, 2026",
+					duration: 1
+				},
+			]
+			
+			for (let i = 0; i < dates.length; i++) {
+				const event = dates[i]
+				console.log(`Adding important date: ${event.title}`)
+				cal.addEvent(`${event.title}`, `2026 Important Uni Dates`, "", start=event.date, end=addDays(event.date, event.duration))
+			}
+
+			return cal
+		}
+
+		function generateCal(classes) {
+			let cal = new ics()
+			const addingDates = document.getElementById("addImportantDates").checked
+			const addingWeeks = document.getElementById("addWeeks").checked
+			if (classes) {
+				for (const lesson in classes) {
+					cal.addEvent(`${classes[lesson].extendedProps.topicCode} ${classes[lesson].extendedProps.activityName}`, `${classes[lesson].extendedProps.topicTitle} ${classes[lesson].extendedProps.activityName} at ${classes[lesson].extendedProps.locationText} ${classes[lesson].extendedProps.roomText}`, classes[lesson].extendedProps.locationCode + " " + classes[lesson].extendedProps.buildingCode + " " + classes[lesson].extendedProps.roomText, classes[lesson].start, classes[lesson].end)
+				}
+			}
+			if (addingWeeks) {
+				let sem2 = {
+					weeksBeforeBreak: 8,
+					weeksAfterBreak: 4,
+					year: 2025,
+					week1Starts: "July 28, 2025",
+					week1Ends: "August 1, 2025"
+				}
+				addSemWeeks(cal, sem2)
+			}
+
+			if (addingDates) {
+				addImportantDates(cal)
+			}
+			
+			if (classes | addingWeeks | addingDates) {
+				cal.download();
+			}
+		}
+
+		function publishResults(results) {
+			let today = new Date()
+			for (const result in results) {
+				elResult = document.createElement("a")
+				elResult.classList.add("downloadLink")
+				elResult.innerHTML = `Calendar for ${results[result].code}`
+				elResult.id = `${generatedCalendars[result].code}-download`
+				elResult.download = true
+				elResult.href = "#"
+				document.getElementById('resultsDiv').appendChild(elResult)
+				document.getElementById('resultsDiv').innerHTML += "<br>"
+			}
+
+			for (const result in results) {
+				document.getElementById(`${results[result].code}-download`).addEventListener("click", (e) => {
+					e.preventDefault()
+					try {
+						console.log(`Attempting to download ${results[result].code}`)
+						generatedCalendars[result].cal.download(`${today.getFullYear()}-${today.getMonth()}-${today.getDate()} - ${results[result].code} Cal`)
+					} catch (err) {
+						console.error(`Failed to download calendar: ${results[result].code}`)
+					}
+				})
+			}
+		}
+	</script>
+</body>
+</html>

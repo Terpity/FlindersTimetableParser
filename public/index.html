@@ -5,6 +5,7 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Flinders Timetable Parser</title>
+	<script type="module"> import csvParse from 'https://cdn.jsdelivr.net/npm/csv-parse@6.1.0/+esm' </script>
 </head>
 <style>
 	body {
@@ -19,15 +20,21 @@
 	}
 </style>
 
-<body style="font-family: Arial, Helvetica, sans-serif; line-height: 1.5em;text-align: center;">
+<body style="font-family: Arial, Helvetica, sans-serif; line-height: 1.5em;text-align: center; padding: 1em;">
 	<h1>Flinders Timetable Parser</h1>
+	<h2 style="font-size: small; line-height: 0px; color: rgb(63, 63, 63)">Now updated for Sem 1 2026!</h2>
+	<p>A very simple, <u>unofficial</u> tool for automatically exporting your Flinders University timetable into iCal files that you can import into Google Calendar, Outlook, Apple Calendar, etc. <br> 
+		Read the steps below for how to use, and please read the disclaimers for some important info.<br>
+		Created because, for some reason, during the massive revamp of the student system, the uni (in their infinite wisdom) decided not to add calendar exports.<br>
+		<i>Please Flinders, add this officially. You could even make it sync! I wouldn't use any of the code you find here though, bad idea.</i>
+	</p>
 	<div>
-		<h2>Links</h2>
+		<h2>Steps</h2>
 		<p>First go to <a href="https://students.flinders.edu.au/compass" target="_blank">Compass</a> and make sure your
 			session is saved in your browser cookies.</p>
 		<p>Then go to <a href="https://students.flinders.edu.au/flinders-services/student-portal/timetable.json"
 				target="_blank">this link</a> and download its contents. It should download as a .json file.</p>
-		<p>Upload that file here, select what extras you want, and hit generate. It'll generate you an iCal file you can
+		<p>Upload that file below, select what extras you want, and hit generate. It'll generate you an iCal file (or files) that you can
 			import into your calendar software of choice.</p>
 		<p>Sometimes you'll get an error (Likely a 401) when trying to fetch your timetable. A known fix is clearing the
 			cookies on Compass and trying again. If you can view your timetable in Compass then the timetable API link
@@ -36,11 +43,13 @@
 	<div>
 		<h2>Generator</h2>
 		<form id="formio" style="text-align: left;">
-			<label for="addWeeks">Add semester weeks?</label><input type="checkbox" id="addWeeks" name="addWeeks"><br>
-			<label for="separateTopics">Generate all as separate calendars? (Useful for colouring in Google
-				Calendar)</label><input type="checkbox" id="separateTopics" name="separateTopics"><br>
-			<label for="input">Upload your timetable json file: </label>
-			<input type="file" id="input" placeholder="timetable.json"><br>
+			<label style="text-align: center;"><u>Additions (All optional)</u></label><br>
+			<label for="addWeeks">Add 2026 Sem 1 semester weeks?</label><input type="checkbox" id="addWeeks" name="addWeeks"><br>
+			<label for="addImportantDates" title="Last day to withdraw, census dates, etc">Add 2026 key dates?</label><input type="checkbox" id="addImportantDates" name="addImportantDates"><br>
+			<label for="input">Upload your timetable json file: </label><input type="file" id="input" placeholder="timetable.json"><br>
+			<br>
+			<label style="text-align: center;"><u>Export</u></label><br>
+			<label for="separateTopics">Generate all as separate calendars? (Useful for colouring in Google Calendar)</label><input type="checkbox" id="separateTopics" name="separateTopics"><br>
 			<label for="generateButton">Punch it and let the magic rip: </label>
 			<button accept=".json" id="generateButton">Generate</button>
 		</form>
@@ -49,15 +58,18 @@
 
 	</div>
 	<div>
-		<h2>Disclaimer</h2>
+		<h2>Disclaimers</h2>
+		<p>I take no responsibility for any incorrect dates published! I make these edits in stolen moments and very rarely proof them. This thing is so unofficial it would shock you.</p>
+		<p>That being said, all info (except for your classes) is taken from the yearly FUSA calendars, so thank them next time you see them!</p> 
 		<p>This program runs fully client-side! Meaning: nothing "calls home", no data gets sent out, I can't see
 			anything you do with your timetable. It all runs in your browser! </p>
 		<p>You can see for yourself by opening Developer Tools, going to the network section, and monitoring incoming
 			and outgoing traffic. Other than loading this page itself, no other calls should be made.</p>
-		<p>If you're still unconvinced, run it offline :D</p>
-		<p>Additionally, I have no plans to maintain this forever, but the code is all on this one page (And on my <a
+		<p>If you're still unconvinced, download it and run it offline :D</p>
+		<p>Additionally, I have no plans to maintain this forever, but the code is all on this one page (and on my <a
 				href="https://github.com/Terpity/FlindersTimetableParser">GitHub repo</a>) so go wild if you feel like
 			it.</p>
+			<p><i>Last updated: 13th Jan, 2026. Cheers! -Terpity</i></p>
 	</div>
 	<script>
 
@@ -335,23 +347,25 @@
 
 		document.getElementById("formio").addEventListener("submit", function (event) {
 			event.preventDefault();
+			console.log("Generating calendar(s)")
 			generatedCalendars = [];
 			document.getElementById('resultsDiv').innerHTML = "" // This is definitely efficient (:
 			const selectedFile = document.getElementById("input").files[0];
-			if (selectedFile) {
+			let classes = undefined
+			if (selectedFile != undefined) {
 				let reader = new FileReader();
 				reader.readAsText(selectedFile, "UTF-8");
 				reader.onload = function (evt) {
-					let classes = JSON.parse(evt.target.result)
-					if (document.getElementById("separateTopics").checked) {
-						generateSeparateCal(classes)
-					} else {
-						generateCal(classes)
-					}
+					classes = JSON.parse(evt.target.result)
 				}
 				reader.onerror = function (evt) {
 					console.log("error reading file");
 				}
+			}
+			if (document.getElementById("separateTopics").checked) {
+				generateSeparateCal(classes)
+			} else {
+				generateCal(classes)
 			}
 		})
 
@@ -370,50 +384,76 @@
 		let generatedCalendars = []
 
 		function generateSeparateCal(classes) { // Generates a separate calendar for each class. Written but never actually tested
-			const uniqueTopics = [...new Set(classes.map(lesson => lesson.extendedProps.topicCode))]; // [ 'A', 'B'] // https://stackoverflow.com/a/35092559
-			for (const topic in uniqueTopics) {
-				let topicCal = ics()
-				for (lesson in classes) {
-					if (classes[lesson].extendedProps.topicCode == uniqueTopics[topic]) {
-						// let formattedEvent = formatEvent(classes[lesson])
-						try {
-							topicCal.addEvent(
-								classes[lesson].extendedProps.topicCode + " " + classes[lesson].extendedProps.activityName,
-								classes[lesson].extendedProps.topicTitle + " " + classes[lesson].extendedProps.activityName + " at " + classes[lesson].extendedProps.locationText + " " + classes[lesson].extendedProps.roomText,
-								classes[lesson].extendedProps.locationCode + " " + classes[lesson].extendedProps.buildingCode + " " + classes[lesson].extendedProps.roomText,
-								classes[lesson].start,
-								classes[lesson].end
-							)
-						} catch {
-							console.error("Error adding event")
+			const addingDates = document.getElementById("addImportantDates").checked
+			const addingWeeks = document.getElementById("addWeeks").checked
+			console.log("Generating separate calendars")
+			console.log(`Classes: ${classes ? "Yes" : "No"}, Weeks: ${addingWeeks}, Dates: ${addingDates}`)
+			if (classes) {
+				const uniqueTopics = [...new Set(classes.map(lesson => lesson.extendedProps.topicCode))]; // [ 'A', 'B'] // https://stackoverflow.com/a/35092559
+				for (const topic in uniqueTopics) {
+					let topicCal = ics()
+					for (lesson in classes) {
+						if (classes[lesson].extendedProps.topicCode == uniqueTopics[topic]) {
+							// let formattedEvent = formatEvent(classes[lesson])
+							try {
+								topicCal.addEvent(
+									classes[lesson].extendedProps.topicCode + " " + classes[lesson].extendedProps.activityName,
+									classes[lesson].extendedProps.topicTitle + " " + classes[lesson].extendedProps.activityName + " at " + classes[lesson].extendedProps.locationText + " " + classes[lesson].extendedProps.roomText,
+									classes[lesson].extendedProps.locationCode + " " + classes[lesson].extendedProps.buildingCode + " " + classes[lesson].extendedProps.roomText,
+									classes[lesson].start,
+									classes[lesson].end
+								)
+							} catch {
+								console.error("Error adding event")
+							}
 						}
 					}
+					let result = {
+						code: uniqueTopics[topic],
+						cal: topicCal
+					}
+					generatedCalendars.push(result)
+	
 				}
-				let result = {
-					code: uniqueTopics[topic],
-					cal: topicCal
-				}
-				generatedCalendars.push(result)
-
 			}
 
-			if (document.getElementById("addWeeks").checked) {
-				let sem2 = {
-					weeksBeforeBreak: 8,
-					weeksAfterBreak: 4,
-					year: 2025,
-					week1Starts: "July 28, 2025",
-					week1Ends: "August 1, 2025"
+			if (addingWeeks) {
+				let sem1 = {
+					weeksBeforeBreak: 6,
+					weeksAfterBreak: 7,
+					year: 2026,
+					week1Starts: "March 2, 2026",
+					week1Ends: "March 6, 2026"
 				}
+				// let sem2 = {
+				// 	weeksBeforeBreak: 8,
+				// 	weeksAfterBreak: 5,
+				// 	year: 2025,
+				// 	week1Starts: "July 28, 2025",
+				// 	week1Ends: "August 1, 2025"
+				// }
 				let weeksCal = new ics()
-				weeksCal = addSemWeeks(weeksCal, sem2)
+				weeksCal = addSemWeeks(weeksCal, sem1)
 				let result = {
 					code: "weeks",
 					cal: weeksCal
 				}
 				generatedCalendars.push(result)
 			};
-			publishResults(generatedCalendars)
+
+			if (addingDates) {
+				let importantDatesCal = new ics()
+				importantDatesCal = addImportantDates(importantDatesCal)
+				let result = {
+					code: "Sem1ImportantDates2026",
+					cal: importantDatesCal
+				}
+				generatedCalendars.push(result)
+			};
+			if (generatedCalendars.length > 0) {
+				publishResults(generatedCalendars)
+
+			}
 			// for (const lesson in classes) {
 			// 	let eventName
 			// 	let eventDesc
@@ -462,7 +502,7 @@
 				// console.log(`Added week ${week} from ${startDate.toDateString()} to ${endDate.toDateString()}`)
 			}
 
-			cal.addEvent(`Uni Mid-semester Break`, "2025 Semester Weeks", "", start = msb1Start, end = msb2End)
+			cal.addEvent(`Uni Mid-semester Break`, `${semDetails.year} Semester Weeks`, "", start = msb1Start, end = msb2End)
 			// console.log(`MSB1: ${msb1Start.toDateString()} - ${msb1End.toDateString()}`)
 			// console.log(`MSB2: ${msb2Start.toDateString()} - ${msb2End.toDateString()}`)
 
@@ -476,20 +516,71 @@
 			// console.log(`Swotvac: ${swotvacStart.toDateString()} - ${swotvacEnd.toDateString()}`)
 			// console.log(`Exams w1: ${exam1Start.toDateString()} - ${exam1End.toDateString()}`)
 			// console.log(`Exams w2: ${exam2Start.toDateString()} - ${exam2End.toDateString()}`)
-			cal.addEvent("Uni Week 13 (SWOTVAC)", `${semDetails.year} Semester Weeks`, "", start = swotvacStart, end=swotvacEnd)
-			cal.addEvent(`Uni End of Year Exams`, "2025 Semester Weeks", "", start = exam1Start, end=exam1End)
-			cal.addEvent(`Uni End of Year Exams`, "2025 Semester Weeks", "", start = exam2Start, end=exam2End)
+			cal.addEvent(`Uni Week ${semDetails.weeksBeforeBreak + semDetails.weeksAfterBreak + 1} (SWOTVAC)`, `${semDetails.year} Semester Weeks`, "", start = swotvacStart, end=swotvacEnd)
+			cal.addEvent(`Uni Exams`, `${semDetails.year} Semester Weeks`, "", start = exam1Start, end=exam1End)
+			cal.addEvent(`Uni Exams`, `${semDetails.year} Semester Weeks`, "", start = exam2Start, end=exam2End)
+
+			return cal
+		}
+
+		function addImportantDates(cal) {
+			const dates = [
+				{
+					title: "O'Week Sem 1",
+					date: "February 23, 2026",
+					duration: 5
+				},
+				{
+					title: "Start of Sem 1",
+					date: "March 2, 2026",
+					duration: 1
+				},
+				{
+					title: "Last day to enrol and pay fees Sem 1",
+					date: "March 13, 2026",
+					duration: 1
+				},
+				{
+					title: "Sem 1 Census Date",
+					date: "April 3, 2026",
+					duration: 1
+				},
+				{
+					title: "Last day to withdraw without failure (WN)",
+					date: "May 15, 2026",
+					duration: 1
+				},
+				{
+					title: "Last day to withdraw (WF)",
+					date: "June 19, 2026",
+					duration: 1
+				},
+				{
+					title: "Higher Degree by Research Census",
+					date: "June 29, 2026",
+					duration: 1
+				},
+			]
+			
+			for (let i = 0; i < dates.length; i++) {
+				const event = dates[i]
+				console.log(`Adding important date: ${event.title}`)
+				cal.addEvent(`${event.title}`, `2026 Important Uni Dates`, "", start=event.date, end=addDays(event.date, event.duration))
+			}
 
 			return cal
 		}
 
 		function generateCal(classes) {
 			let cal = new ics()
-			for (const lesson in classes) {
-				cal.addEvent(`${classes[lesson].extendedProps.topicCode} ${classes[lesson].extendedProps.activityName}`, `${classes[lesson].extendedProps.topicTitle} ${classes[lesson].extendedProps.activityName} at ${classes[lesson].extendedProps.locationText} ${classes[lesson].extendedProps.roomText}`, classes[lesson].extendedProps.locationCode + " " + classes[lesson].extendedProps.buildingCode + " " + classes[lesson].extendedProps.roomText, classes[lesson].start, classes[lesson].end)
+			const addingDates = document.getElementById("addImportantDates").checked
+			const addingWeeks = document.getElementById("addWeeks").checked
+			if (classes) {
+				for (const lesson in classes) {
+					cal.addEvent(`${classes[lesson].extendedProps.topicCode} ${classes[lesson].extendedProps.activityName}`, `${classes[lesson].extendedProps.topicTitle} ${classes[lesson].extendedProps.activityName} at ${classes[lesson].extendedProps.locationText} ${classes[lesson].extendedProps.roomText}`, classes[lesson].extendedProps.locationCode + " " + classes[lesson].extendedProps.buildingCode + " " + classes[lesson].extendedProps.roomText, classes[lesson].start, classes[lesson].end)
+				}
 			}
-
-			if (document.getElementById("addWeeks").checked) {
+			if (addingWeeks) {
 				let sem2 = {
 					weeksBeforeBreak: 8,
 					weeksAfterBreak: 4,
@@ -498,9 +589,15 @@
 					week1Ends: "August 1, 2025"
 				}
 				addSemWeeks(cal, sem2)
-			};
-			cal.download();
+			}
 
+			if (addingDates) {
+				addImportantDates(cal)
+			}
+			
+			if (classes | addingWeeks | addingDates) {
+				cal.download();
+			}
 		}
 
 		function publishResults(results) {
@@ -520,7 +617,8 @@
 				document.getElementById(`${results[result].code}-download`).addEventListener("click", (e) => {
 					e.preventDefault()
 					try {
-						generatedCalendars[result].cal.download(`${today.getFullYear()}-${today.getMonth()}-${today.getDate()} - ${results[result].code} Timetable`)
+						console.log(`Attempting to download ${results[result].code}`)
+						generatedCalendars[result].cal.download(`${today.getFullYear()}-${today.getMonth()}-${today.getDate()} - ${results[result].code} Cal`)
 					} catch (err) {
 						console.error(`Failed to download calendar: ${results[result].code}`)
 					}
