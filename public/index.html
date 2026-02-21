@@ -403,14 +403,28 @@
 			}
 		})
 
-		function formatEvent(lesson) { // Potential future refactor to allow user to design calendar data to what fits them
-			let eventName = lesson.extendedProps.topicCode + " " + lesson.extendedProps.activityName
-			let eventDesc = lesson.extendedProps.topicTitle + " " + lesson.extendedProps.activityName + " at " + lesson.extendedProps.locationText + " " + lesson.extendedProps.roomText
-			let eventLocation = lesson.extendedProps.locationCode + " " + lesson.extendedProps.buildingCode + " " + lesson.extendedProps.roomText
-			let eventStart = lesson.start
-			let eventEnd = lesson.end
-			let result = {
-				eventName, eventDesc, eventLocation, eventStart, eventEnd
+		function formatLesson(lesson) { // Potential future refactor to allow user to design calendar data to what fits them
+			const eventName = lesson.extendedProps.topicCode + " " + lesson.extendedProps.activityName;
+			let eventDesc = lesson.extendedProps.topicTitle + " " + lesson.extendedProps.activityName
+			if (lesson.extendedProps.roomText) {
+				eventDesc += "\\n"
+				eventDesc += lesson.extendedProps.locationText + " " + lesson.extendedProps.roomText
+			}
+			if (lesson.extendedProps.notes) {
+				eventDesc += "\\n"
+				eventDesc += lesson.extendedProps.notes
+			}
+			eventDesc += descriptionTagline
+			let eventLocation = null
+			if (lesson.extendedProps.roomText) {
+				eventLocation = lesson.extendedProps.locationCode + " " + lesson.extendedProps.buildingCode + " " + lesson.extendedProps.roomText
+			} else if (lesson.extendedProps.notes) {
+				eventLocation = lesson.extendedProps.notes
+			}
+			const eventStart = lesson.start;
+			const eventEnd = lesson.end;
+			const result = {
+				title: eventName, description: eventDesc, location: eventLocation, start: eventStart, end: eventEnd
 			}
 			return result
 		}
@@ -430,12 +444,13 @@
 						if (classes[lesson].extendedProps.topicCode == uniqueTopics[topic]) {
 							// let formattedEvent = formatEvent(classes[lesson])
 							try {
+								const lessonData = formatLesson(classes[lesson])
 								topicCal.addEvent(
-									classes[lesson].extendedProps.topicCode + " " + classes[lesson].extendedProps.activityName,
-									classes[lesson].extendedProps.topicTitle + " " + classes[lesson].extendedProps.activityName + " at " + classes[lesson].extendedProps.locationText + " " + classes[lesson].extendedProps.roomText + descriptionTagline,
-									classes[lesson].extendedProps.locationCode + " " + classes[lesson].extendedProps.buildingCode + " " + classes[lesson].extendedProps.roomText,
-									classes[lesson].start,
-									classes[lesson].end
+									lessonData.title,
+									lessonData.description,
+									lessonData.location,
+									lessonData.start,
+									lessonData.end,
 								)
 							} catch {
 								console.error("Error adding event")
@@ -486,7 +501,6 @@
 			};
 			if (generatedCalendars.length > 0) {
 				publishResults(generatedCalendars)
-
 			}
 			// for (const lesson in classes) {
 			// 	let eventName
@@ -630,7 +644,14 @@
 			const addingWeeks = document.getElementById("addWeeks").checked
 			if (classes) {
 				for (const lesson in classes) {
-					cal.addEvent(`${classes[lesson].extendedProps.topicCode} ${classes[lesson].extendedProps.activityName}`, `${classes[lesson].extendedProps.topicTitle} ${classes[lesson].extendedProps.activityName} at ${classes[lesson].extendedProps.locationText} ${classes[lesson].extendedProps.roomText}` + descriptionTagline, classes[lesson].extendedProps.locationCode + " " + classes[lesson].extendedProps.buildingCode + " " + classes[lesson].extendedProps.roomText, classes[lesson].start, classes[lesson].end)
+					const lessonData = formatLesson(classes[lesson])
+					topicCal.addEvent(
+						lessonData.title,
+						lessonData.description,
+						lessonData.location,
+						lessonData.start,
+						lessonData.end,
+					)
 				}
 			}
 			if (addingWeeks) {
