@@ -68,12 +68,11 @@
 		<p>This program runs fully client-side! Meaning: nothing "calls home", no data gets sent out, I can't see
 			anything you do with your timetable. It all runs in your browser! </p>
 		<p>You can see for yourself by opening Developer Tools, going to the network section, and monitoring incoming
-			and outgoing traffic. Other than loading this page itself, no other calls should be made.</p>
-		<p>If you're still unconvinced, download it and run it offline :D</p>
+			and outgoing traffic.</p>
 		<p>Additionally, I have no plans to maintain this forever, but the code is all on this one page (and on my <a
 				href="https://github.com/Terpity/FlindersTimetableParser">GitHub repo</a>) so go wild if you feel like
 			it.</p>
-			<p><i>Last updated: 9th Feb, 2026. Cheers! -Terpity</i></p>
+			<p><i>Last updated: 21st Feb, 2026. Cheers! -Terpity</i></p>
 	</div>
 	<script>
 
@@ -378,19 +377,29 @@
 			const selectedFile = document.getElementById("input").files[0];
 			let classes = undefined
 			if (selectedFile != undefined) {
-				let reader = new FileReader();
-				reader.readAsText(selectedFile, "UTF-8");
-				reader.onload = function (evt) {
-					classes = JSON.parse(evt.target.result)
+				try {
+					let reader = new FileReader();
+					reader.readAsText(selectedFile, "UTF-8");
+					reader.onload = function (evt) {
+						classes = JSON.parse(evt.target.result)
+						if (document.getElementById("separateTopics").checked) {
+							generateSeparateCal(classes)
+						} else {
+							generateCal(classes)
+						}
+					}
+					reader.onerror = function (evt) {
+						console.log("error reading file");
+					}
+				} catch (e) {
+					console.error(e)
 				}
-				reader.onerror = function (evt) {
-					console.log("error reading file");
-				}
-			}
-			if (document.getElementById("separateTopics").checked) {
-				generateSeparateCal(classes)
 			} else {
-				generateCal(classes)
+				if (document.getElementById("separateTopics").checked) {
+					generateSeparateCal(undefined)
+				} else {
+					generateCal(undefined)
+				}
 			}
 		})
 
@@ -662,7 +671,7 @@
 					e.preventDefault()
 					try {
 						console.log(`Attempting to download ${results[result].code}`)
-						generatedCalendars[result].cal.download(`${today.getFullYear()}-${today.getMonth()}-${today.getDate()} - ${results[result].code} Cal`)
+						generatedCalendars[result].cal.download(`${today.getFullYear()}-${today.getMonth()+1}-${today.getDate()} - ${results[result].code} Cal`)
 					} catch (err) {
 						console.error(`Failed to download calendar: ${results[result].code}`)
 					}
