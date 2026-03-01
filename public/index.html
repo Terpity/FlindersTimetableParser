@@ -385,7 +385,7 @@
 						if (document.getElementById("separateTopics").checked) {
 							generateSeparateCal(classes)
 						} else {
-							generateCal(classes)
+							generateOneCal(classes)
 						}
 					}
 					reader.onerror = function (evt) {
@@ -398,7 +398,7 @@
 				if (document.getElementById("separateTopics").checked) {
 					generateSeparateCal(undefined)
 				} else {
-					generateCal(undefined)
+					generateOneCal(undefined)
 				}
 			}
 		})
@@ -638,20 +638,24 @@
 			return cal
 		}
 
-		function generateCal(classes) {
+		function generateOneCal(classes) {
 			let cal = new ics()
 			const addingDates = document.getElementById("addImportantDates").checked
 			const addingWeeks = document.getElementById("addWeeks").checked
-			if (classes) {
+			if (classes != undefined) {
 				for (const lesson in classes) {
-					const lessonData = formatLesson(classes[lesson])
-					topicCal.addEvent(
-						lessonData.title,
-						lessonData.description,
-						lessonData.location,
-						lessonData.start,
-						lessonData.end,
-					)
+					try {
+						const lessonData = formatLesson(classes[lesson])
+						cal.addEvent(
+							lessonData.title,
+							lessonData.description,
+							lessonData.location,
+							lessonData.start,
+							lessonData.end,
+						)
+					} catch (e) {
+						console.error("Error adding classes to single cal")
+					}
 				}
 			}
 			if (addingWeeks) {
@@ -669,8 +673,11 @@
 				addImportantDates(cal)
 			}
 			
-			if (classes | addingWeeks | addingDates) {
+			if ((classes != undefined) | addingWeeks | addingDates) {
+				console.log("Downloading single cal")
 				cal.download();
+			} else {
+				console.error(`Went to export calendar but nothing selected: Classes ${classes}, weeks ${addingWeeks}, dates ${addingDates}`)
 			}
 		}
 
